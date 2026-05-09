@@ -6,15 +6,14 @@ import requests
 
 app = Flask(__name__)
 
-# Your target folder
 BASE_DIR = Path("/Users/riccardoinfascelli/Desktop/Hackathon/GDG-AI-HACK-2026/Project/PROVA").resolve()
 
-# Ollama settings
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-OLLAMA_MODEL = "gemma3:1b"  # Change this if your local model has another name
+OLLAMA_MODEL = "gemma3:1b"
 
 MAX_FILE_PREVIEW_CHARS = 4000
 MAX_TOTAL_FILES_FOR_AI = 80
+DEBUG_ORGANIZER = True
 
 TEXT_EXTENSIONS = {
     ".txt", ".md", ".py", ".js", ".html", ".css", ".json", ".csv",
@@ -26,6 +25,11 @@ IGNORED_DIRS = {
     "venv", ".venv", "__pycache__", ".git", "node_modules",
     ".idea", ".vscode", "dist", "build"
 }
+
+
+def debug(*args):
+    if DEBUG_ORGANIZER:
+        print("[ORGANIZER]", *args, flush=True)
 
 
 def safe_path(relative_path=""):
@@ -60,7 +64,7 @@ def build_tree(path: Path):
             children.append(node)
 
     except PermissionError:
-        pass
+        debug("TREE SKIP permission denied:", path)
 
     return children
 
@@ -80,32 +84,48 @@ def read_file_preview(path: Path):
         with path.open("r", encoding="utf-8", errors="ignore") as f:
             return f.read(MAX_FILE_PREVIEW_CHARS)
 
-    except Exception:
+    except Exception as e:
+        debug("READ SKIP:", path.relative_to(BASE_DIR), "reason:", str(e))
         return None
 
 
 def collect_files_for_ai():
     collected = []
 
+    debug("Collecting files from:", BASE_DIR)
+
     for path in BASE_DIR.rglob("*"):
+        rel = path.relative_to(BASE_DIR)
+
         if len(collected) >= MAX_TOTAL_FILES_FOR_AI:
+            debug("STOP: max file limit reached:", MAX_TOTAL_FILES_FOR_AI)
             break
 
         if not path.is_file():
+            debug("SKIP collect not file:", rel)
             continue
 
         if path.name.startswith("."):
+            debug("SKIP collect hidden file:", rel)
             continue
 
         relative_parts = path.relative_to(BASE_DIR).parts
 
         if any(part in IGNORED_DIRS for part in relative_parts):
+            debug("SKIP collect ignored dir:", rel)
+            continue
+
+        if not is_probably_text_file(path):
+            debug("SKIP collect non-text extension:", rel, path.suffix)
             continue
 
         preview = read_file_preview(path)
 
         if preview is None:
+            debug("SKIP collect unreadable preview:", rel)
             continue
+
+        debug("COLLECT:", rel)
 
         relative_path = path.relative_to(BASE_DIR)
 
@@ -117,14 +137,11 @@ def collect_files_for_ai():
             "preview": preview
         })
 
+    debug("TOTAL COLLECTED:", len(collected))
     return collected
 
 
 def extract_json_from_llm_response(text):
-    """
-    Ollama may return extra text around JSON.
-    This tries to extract the first valid JSON object.
-    """
     text = text.strip()
 
     try:
@@ -182,7 +199,6 @@ Examples:
 - images / static media -> assets
 - notebooks / experiments -> experiments
 
-
 Folder naming rules:
 - You are free to invent folder names based on the actual content.
 - Folder names should be meaningful and specific to the project.
@@ -198,8 +214,19 @@ Folder naming rules:
 - Do not create empty folders.
 - Avoid excessive nesting.
 - Maximum nesting depth: 3 folders.
-- If a file is already in a good location, leave it unmoved.
+- If a file is already in a good location, still include it in moves with "to" equal to its current path.
 - You are encouraged to be creative in naming folders based on the content.
+
+Critical move rules:
+- You must return one move decision for EVERY file in the provided file list.
+- Do not omit files.
+- If a file is already perfectly located, include it with the same path in "to".
+- If you cannot determine a specific category, move it to "misc/<original_filename>".
+- Never skip a file because no ideal folder name exists.
+- Every file must appear exactly once in "moves".
+- The "moves" array length must equal the number of provided files.
+- The "from" value must exactly match one of the provided file paths.
+- The "to" value must contain the same original filename as "from".
 
 Safety rules:
 - Return ONLY valid JSON.
@@ -216,19 +243,7 @@ Safety rules:
 Existing folders:
 {json.dumps(existing_dirs, indent=2)}
 
-Return ONLY valid JSON with this structure.
-
-The "to" value must be a real folder name chosen by you based on the file content.
-Do not use placeholder folder names like:
-- chosen_folder
-- folder_name
-- category
-- destination
-- old
-- new
-- target_folder
-
-Example response:
+Return ONLY valid JSON with this structure:
 
 {{
   "summary": "Grouped files by project purpose.",
@@ -237,35 +252,24 @@ Example response:
       "from": "app.py",
       "to": "server/app.py",
       "reason": "Contains Flask server routes and backend logic."
-    }},
-    {{
-      "from": "templates/index.html",
-      "to": "pages/index.html",
-      "reason": "HTML page template for the user interface."
-    }},
-    {{
-      "from": "styles/main.css",
-      "to": "ui/main.css",
-      "reason": "Stylesheet for the frontend interface."
-    }},
-    {{
-      "from": "notes/ideas.md",
-      "to": "planning/ideas.md",
-      "reason": "Project planning notes and ideas."
     }}
   ]
 }}
 
 Important:
-- The strings above are placeholders.
+- The example above is only an example.
 - Replace every placeholder with real paths from the provided file list.
 - The "from" value must exactly match one of the provided file paths.
 - The "to" value must contain the same original filename as "from".
 - The folder in "to" must be your own meaningful category name based on content.
+- If unsure, use misc/<original_filename>.
 
 Files:
 {json.dumps(files, indent=2)}
 """
+
+    debug("Sending prompt to Ollama.")
+    debug("Files sent to Ollama:", len(files))
 
     response = requests.post(
         OLLAMA_URL,
@@ -278,8 +282,8 @@ Files:
         timeout=180
     )
 
-    print("STATUS:", response.status_code)
-    print("TEXT:", response.text)
+    debug("OLLAMA STATUS:", response.status_code)
+    debug("OLLAMA RAW TEXT:", response.text[:5000])
 
     response.raise_for_status()
 
@@ -289,7 +293,11 @@ Files:
     if not raw_text:
         raise ValueError("Empty response from Ollama")
 
-    return extract_json_from_llm_response(raw_text)
+    parsed = extract_json_from_llm_response(raw_text)
+
+    debug("OLLAMA PARSED MOVES:", len(parsed.get("moves", [])))
+
+    return parsed
 
 
 def validate_relative_path(path_string):
@@ -308,13 +316,6 @@ def validate_relative_path(path_string):
 
 
 def clean_folder_part(name):
-    """
-    Cleans one folder name part while preserving the AI's choice.
-
-    Example:
-    'Machine Learning Notes' -> 'machine_learning'
-    'API Routes!!!' -> 'api_routes'
-    """
     name = str(name).strip().lower()
     name = name.replace("\\", "/")
     name = name.split("/")[-1]
@@ -323,8 +324,6 @@ def clean_folder_part(name):
     name = "".join(ch for ch in name if ch.isalnum() or ch in "_-")
 
     chunks = [c for c in name.replace("-", "_").split("_") if c]
-
-    # Keep folder names short: max 2 words
     chunks = chunks[:2]
 
     cleaned = "_".join(chunks)
@@ -332,7 +331,6 @@ def clean_folder_part(name):
     if not cleaned:
         return "misc"
 
-    # Avoid absurdly long folder names
     if len(cleaned) > 32:
         cleaned = cleaned[:32].rstrip("_-")
 
@@ -340,13 +338,6 @@ def clean_folder_part(name):
 
 
 def clean_folder_path(path):
-    """
-    Cleans a model-generated folder path.
-    Allows max nesting depth of 2.
-
-    Example:
-    'Backend/API Routes/file.py' -> 'backend/api_routes'
-    """
     path = str(path).strip().replace("\\", "/")
     parts = [p for p in path.split("/") if p and p not in {".", ".."}]
 
@@ -358,51 +349,99 @@ def clean_folder_path(path):
     return Path(*cleaned_parts)
 
 
+def repair_missing_llm_moves(raw_plan, files):
+    provided_paths = {f["path"] for f in files}
+    returned_paths = {
+        move.get("from")
+        for move in raw_plan.get("moves", [])
+        if move.get("from")
+    }
+
+    missing_paths = provided_paths - returned_paths
+
+    for missing in sorted(missing_paths):
+        debug("LLM OMITTED FILE, forcing misc:", missing)
+
+        raw_plan.setdefault("moves", []).append({
+            "from": missing,
+            "to": f"misc/{Path(missing).name}",
+            "reason": "The model omitted this file, so it was safely assigned to misc."
+        })
+
+    extra_paths = returned_paths - provided_paths
+
+    for extra in sorted(extra_paths):
+        debug("LLM RETURNED UNKNOWN FILE:", extra)
+
+    return raw_plan
+
+
 def normalize_plan(plan):
-    """
-    Cleans the model plan before applying it.
-    - Preserves AI-generated folder names.
-    - Sanitizes folder names for filesystem safety.
-    - Ensures destination filename stays the same.
-    - Derives directories only from actual moves.
-    """
     normalized_dirs = set()
     normalized_moves = []
 
-    for move in plan.get("moves", []):
+    moves = plan.get("moves", [])
+
+    debug("Normalizing moves:", len(moves))
+
+    seen_sources = set()
+
+    for move in moves:
         source = move.get("from", "")
         destination = move.get("to", "")
         reason = move.get("reason", "")
 
         if not source or not destination:
+            debug("NORMALIZE SKIP missing source/destination:", move)
             continue
+
+        if source in seen_sources:
+            debug("NORMALIZE SKIP duplicate source:", source)
+            continue
+
+        seen_sources.add(source)
 
         source_path = Path(source)
         destination_path = Path(destination)
-
         original_filename = source_path.name
 
-        # If AI returns only a filename, skip because there is no folder decision
+        if destination_path.name != original_filename:
+            debug(
+                "NORMALIZE FIX filename mismatch:",
+                source,
+                "AI destination:",
+                destination,
+                "forced filename:",
+                original_filename
+            )
+
         if len(destination_path.parts) < 2:
-            continue
+            debug("NORMALIZE FIX no folder from AI, forcing misc:", source, "->", destination)
+            destination_path = Path("misc") / original_filename
 
         folder_path = clean_folder_path(destination_path.parent)
 
         if str(folder_path).split("/")[0] in IGNORED_DIRS:
-            continue
+            debug("NORMALIZE FIX ignored destination folder, forcing misc:", source, "->", folder_path)
+            folder_path = Path("misc")
 
         final_destination = str(folder_path / original_filename)
 
         if source == final_destination:
+            debug("NORMALIZE KEEP already good location:", source)
             continue
+
+        debug("NORMALIZE MOVE:", source, "->", final_destination)
 
         normalized_dirs.add(str(folder_path))
 
         normalized_moves.append({
             "from": source,
             "to": final_destination,
-            "reason": reason[:160]
+            "reason": str(reason)[:160]
         })
+
+    debug("NORMALIZED MOVE COUNT:", len(normalized_moves))
 
     return {
         "summary": plan.get("summary", "Files were reorganized by content and purpose."),
@@ -412,10 +451,6 @@ def normalize_plan(plan):
 
 
 def unique_destination_path(destination: Path):
-    """
-    Prevent overwriting files.
-    If file.txt exists, create file_1.txt, file_2.txt, etc.
-    """
     if not destination.exists():
         return destination
 
@@ -429,20 +464,14 @@ def unique_destination_path(destination: Path):
         candidate = parent / f"{stem}_{counter}{suffix}"
 
         if not candidate.exists():
+            debug("DESTINATION EXISTS, using unique path:", candidate.relative_to(BASE_DIR))
             return candidate
 
         counter += 1
 
 
 def remove_empty_folders(candidate_dirs):
-    """
-    Removes empty folders caused by organization.
-    Only removes folders inside BASE_DIR.
-    Never removes BASE_DIR itself.
-    Never removes ignored/system folders.
-    """
     removed = []
-
     paths = []
 
     for directory in candidate_dirs:
@@ -461,10 +490,10 @@ def remove_empty_folders(candidate_dirs):
 
             paths.append(path)
 
-        except Exception:
+        except Exception as e:
+            debug("CLEANUP SKIP:", directory, "reason:", str(e))
             continue
 
-    # Remove deepest folders first
     paths = sorted(set(paths), key=lambda p: len(p.parts), reverse=True)
 
     for path in paths:
@@ -472,8 +501,9 @@ def remove_empty_folders(candidate_dirs):
             if path.exists() and path.is_dir() and not any(path.iterdir()):
                 path.rmdir()
                 removed.append(str(path.relative_to(BASE_DIR)))
-        except Exception:
-            pass
+                debug("REMOVED EMPTY FOLDER:", path.relative_to(BASE_DIR))
+        except Exception as e:
+            debug("REMOVE EMPTY FOLDER FAILED:", path.relative_to(BASE_DIR), "reason:", str(e))
 
     return removed
 
@@ -486,6 +516,8 @@ def apply_organization_plan(plan):
 
     moves = plan.get("moves", [])
 
+    debug("Applying moves:", len(moves))
+
     for move in moves:
         source_relative = move.get("from", "")
         destination_relative = move.get("to", "")
@@ -496,6 +528,7 @@ def apply_organization_plan(plan):
             destination_path = safe_path(validate_relative_path(destination_relative))
 
             if not source_path.exists():
+                debug("APPLY SKIP:", source_relative, "reason: Source file does not exist")
                 skipped_files.append({
                     "path": source_relative,
                     "reason": "Source file does not exist"
@@ -503,6 +536,7 @@ def apply_organization_plan(plan):
                 continue
 
             if not source_path.is_file():
+                debug("APPLY SKIP:", source_relative, "reason: Source is not a file")
                 skipped_files.append({
                     "path": source_relative,
                     "reason": "Source is not a file"
@@ -510,6 +544,7 @@ def apply_organization_plan(plan):
                 continue
 
             if source_path == destination_path:
+                debug("APPLY SKIP:", source_relative, "reason: Already in target location")
                 skipped_files.append({
                     "path": source_relative,
                     "reason": "Already in target location"
@@ -525,8 +560,10 @@ def apply_organization_plan(plan):
 
             shutil.move(str(source_path), str(final_destination))
 
+            debug("MOVED:", source_relative, "->", final_destination.relative_to(BASE_DIR))
+
             moved_files.append({
-                "from": str(source_path.relative_to(BASE_DIR)),
+                "from": source_relative,
                 "to": str(final_destination.relative_to(BASE_DIR)),
                 "reason": reason
             })
@@ -537,6 +574,7 @@ def apply_organization_plan(plan):
                 pass
 
         except Exception as e:
+            debug("APPLY SKIP:", source_relative, "reason:", str(e))
             skipped_files.append({
                 "path": source_relative,
                 "reason": str(e)
@@ -544,7 +582,6 @@ def apply_organization_plan(plan):
 
     removed_empty_dirs = remove_empty_folders(cleanup_candidates)
 
-    # Keep only folders that still exist and are not empty
     real_created_dirs = []
 
     for directory in sorted(created_dirs):
@@ -554,8 +591,13 @@ def apply_organization_plan(plan):
             if path.exists() and path.is_dir() and any(path.iterdir()):
                 real_created_dirs.append(directory)
 
-        except Exception:
-            pass
+        except Exception as e:
+            debug("CREATED DIR CHECK SKIP:", directory, "reason:", str(e))
+
+    debug("APPLY RESULT moved:", len(moved_files))
+    debug("APPLY RESULT skipped:", len(skipped_files))
+    debug("APPLY RESULT created dirs:", len(real_created_dirs))
+    debug("APPLY RESULT removed empty dirs:", len(removed_empty_dirs))
 
     return {
         "created_dirs": real_created_dirs,
@@ -638,14 +680,19 @@ def chat():
 @app.route("/api/organize", methods=["POST"])
 def organize_files():
     try:
+        debug("===== ORGANIZATION STARTED =====")
+
         files = collect_files_for_ai()
 
         if not files:
+            debug("No readable files found.")
             return jsonify({
                 "reply": "I could not find readable text/code files to organize."
             })
 
         raw_plan = ask_ollama_for_organization(files)
+        raw_plan = repair_missing_llm_moves(raw_plan, files)
+
         plan = normalize_plan(raw_plan)
         result = apply_organization_plan(plan)
 
@@ -667,17 +714,22 @@ def organize_files():
         if moved_count > 0:
             reply += "\n\nMain moves:\n"
 
-            for move in result["moved_files"][:8]:
+            for move in result["moved_files"][:12]:
                 reply += f"- {move['from']} → {move['to']}\n"
 
         if result.get("removed_empty_dirs"):
             reply += "\nRemoved empty folders:\n"
 
-            for folder in result["removed_empty_dirs"][:8]:
+            for folder in result["removed_empty_dirs"][:12]:
                 reply += f"- {folder}\n"
 
         if skipped_count > 0:
-            reply += "\nSome files were skipped for safety or because they were already correctly placed."
+            reply += "\nSkipped files:\n"
+
+            for skipped in result["skipped_files"][:12]:
+                reply += f"- {skipped['path']}: {skipped['reason']}\n"
+
+        debug("===== ORGANIZATION FINISHED =====")
 
         return jsonify({
             "reply": reply,
@@ -687,16 +739,19 @@ def organize_files():
         })
 
     except requests.exceptions.ConnectionError:
+        debug("ERROR: Could not connect to Ollama.")
         return jsonify({
             "error": "Could not connect to Ollama. Make sure Ollama is running with: ollama serve"
         }), 500
 
     except requests.exceptions.Timeout:
+        debug("ERROR: Ollama timeout.")
         return jsonify({
             "error": "Ollama took too long to respond. Try with fewer files or a smaller directory."
         }), 500
 
     except Exception as e:
+        debug("ERROR:", str(e))
         return jsonify({
             "error": f"Organization failed: {str(e)}"
         }), 500
