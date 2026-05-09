@@ -215,18 +215,26 @@ Safety rules:
 Existing folders:
 {json.dumps(existing_dirs, indent=2)}
 
-Return exactly this JSON structure:
+Return ONLY valid JSON in this shape:
 
 {{
-  "summary": "Short summary of the organization.",
+  "summary": "Short summary of what you changed.",
   "moves": [
     {{
-      "from": "old/relative/file.txt",
-      "to": "ai_chosen_folder/original_filename.txt",
-      "reason": "Short reason based on content similarity"
+      "from": "actual/file/path.ext",
+      "to": "meaningful_folder/original_filename.ext",
+      "reason": "Short reason based on the file content"
     }}
   ]
 }}
+
+Important:
+- The strings above are placeholders.
+- Do NOT copy "actual", "file", "path", "meaningful_folder", or "original_filename".
+- Replace every placeholder with real paths from the provided file list.
+- The "from" value must exactly match one of the provided file paths.
+- The "to" value must contain the same original filename as "from".
+- The folder in "to" must be your own meaningful category name based on content.
 
 Files:
 {json.dumps(files, indent=2)}
