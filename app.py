@@ -8,10 +8,10 @@ import requests
 app = Flask(__name__)
 
 # Your target folder
-BASE_DIR = Path("/home/yekta/AI-HACK/Project/PROVA").resolve()
+BASE_DIR = Path("/Users/riccardoinfascelli/Desktop/Hackathon/GDG-AI-HACK-2026/Project/PROVA").resolve()
 
 # Ollama settings
-OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 OLLAMA_MODEL = "llama3.1"  # change this if your local model has another name
 
 MAX_FILE_PREVIEW_CHARS = 2500
@@ -183,15 +183,15 @@ Files:
 {json.dumps(files, indent=2)}
 """
 
-    response = requests.post(
-        OLLAMA_URL,
-        json={
-            "model": OLLAMA_MODEL,
-            "prompt": prompt,
-            "stream": False
-        },
-        timeout=180
-    )
+    response = requests.post("http://127.0.0.1:11434/api/generate", json={
+        "model": "gemma3:1b",
+        "prompt": prompt,
+        "stream": False,
+        "format": "json"
+    })
+
+    print("STATUS:", response.status_code)
+    print("TEXT:", response.text)
 
     response.raise_for_status()
 
