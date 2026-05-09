@@ -1,0 +1,7 @@
+La sicurezza del file organizer è gestita tramite validazione dei percorsi.
+Ogni path viene verificato per evitare accessi fuori dalla directory base.
+Le operazioni di spostamento utilizzano controlli contro sovrascritture.
+Se un file esiste già viene creato automaticamente un nuovo nome.
+Le cartelle vengono generate solo quando necessario.
+Gli errori vengono registrati e restituiti tramite API JSON.
+Questo approccio rende il sistema più robusto e affidabile.

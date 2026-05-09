@@ -11,7 +11,7 @@ BASE_DIR = Path("/Users/riccardoinfascelli/Desktop/Hackathon/GDG-AI-HACK-2026/Pr
 
 # Ollama settings
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-OLLAMA_MODEL = "llama3.1"  # Change this if your local model has another name
+OLLAMA_MODEL = "gemma3:1b"  # Change this if your local model has another name
 
 MAX_FILE_PREVIEW_CHARS = 4000
 MAX_TOTAL_FILES_FOR_AI = 80
@@ -258,10 +258,7 @@ Files:
             "model": OLLAMA_MODEL,
             "prompt": prompt,
             "stream": False,
-            "format": "json",
-            "options": {
-                "temperature": 0.1
-            }
+            "format": "json"
         },
         timeout=180
     )

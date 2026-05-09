@@ -1,0 +1,7 @@
+ChromaDB viene utilizzato per memorizzare vettori semantici persistenti.
+Ogni embedding rappresenta il significato generale di un documento.
+La ricerca vettoriale permette di trovare contenuti simili rapidamente.
+Questo approccio è molto utile per classificazione automatica dei file.
+I metadati salvano anche percorso e categoria di appartenenza.
+Il database può essere interrogato in tempo reale tramite Python.
+L’intero sistema funziona offline senza dipendere da servizi esterni.

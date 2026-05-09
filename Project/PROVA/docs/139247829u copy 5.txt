@@ -1,0 +1,7 @@
+I modelli vision consentono di analizzare immagini automaticamente.
+LLaVA può descrivere screenshot, fotografie e diagrammi complessi.
+Le descrizioni generate possono essere convertite in embedding vettoriali.
+Questo permette di classificare anche immagini all’interno delle cartelle.
+Il sistema potrebbe supportare PDF e scansioni nel prossimo futuro.
+L’analisi multimodale amplia notevolmente le capacità dell’applicazione.
+L’obiettivo è creare un assistente documentale completamente intelligente.

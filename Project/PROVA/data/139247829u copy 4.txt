@@ -1,0 +1,15 @@
+Il frontend del progetto è organizzato in sidebar e pannelli dinamici.
+La colonna sinistra mostra la struttura completa delle directory.
+Il pannello centrale visualizza i file contenuti nella cartella corrente.
+La chat laterale consente di inviare istruzioni al sistema AI.
+Ogni azione viene eseguita senza ricaricare l’intera pagina web.
+Le API Flask restituiscono dati JSON utilizzati dal frontend.
+Questo rende l’esperienza utente più fluida e interattiva.# file6.txt
+
+I modelli vision consentono di analizzare immagini automaticamente.
+LLaVA può descrivere screenshot, fotografie e diagrammi complessi.
+Le descrizioni generate possono essere convertite in embedding vettoriali.
+Questo permette di classificare anche immagini all’interno delle cartelle.
+Il sistema potrebbe supportare PDF e scansioni nel prossimo futuro.
+L’analisi multimodale amplia notevolmente le capacità dell’applicazione.
+L’obiettivo è creare un assistente documentale completamente intelligente.
