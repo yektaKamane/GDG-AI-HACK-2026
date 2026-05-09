@@ -4,8 +4,8 @@ import os
 
 app = Flask(__name__)
 
-BASE_DIR = Path.cwd().resolve()
-
+# run pwd and copy the output here, replace the existing
+BASE_DIR = Path("/home/yekta/AI-HACK/Project/PROVA").resolve()
 
 def safe_path(relative_path=""):
     target = (BASE_DIR / relative_path).resolve()
