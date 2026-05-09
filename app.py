@@ -27,29 +27,6 @@ IGNORED_DIRS = {
     ".idea", ".vscode", "dist", "build"
 }
 
-ALLOWED_FOLDER_REPLACEMENTS = {
-    "python": "scripts",
-    "python_files": "scripts",
-    "javascript": "frontend",
-    "html": "frontend",
-    "css": "frontend",
-    "markdown": "docs",
-    "documents": "docs",
-    "documentation": "docs",
-    "configuration": "config",
-    "configs": "config",
-    "settings": "config",
-    "datasets": "data",
-    "dataset": "data",
-    "csv": "data",
-    "json_data": "data",
-    "machine_learning": "models",
-    "ml": "models",
-    "ai": "models",
-    "utilities": "scripts",
-    "helpers": "scripts",
-}
-
 
 def safe_path(relative_path=""):
     target = (BASE_DIR / relative_path).resolve()
@@ -191,33 +168,36 @@ Reorganize files by CONTENT and PURPOSE, not just extension.
 You must group files that belong together.
 
 Examples:
-- Python backend code -> backend
-- Flask routes / API files -> backend
-- HTML/CSS/JS UI files -> frontend
-- text explanations / markdown -> docs
-- datasets / csv / json data -> data
+- Flask routes / API files -> api
+- HTML templates -> templates
+- CSS / JS UI code -> ui or frontend
+- authentication files -> auth
+- database files -> database
+- scraping files -> scrapers
+- AI prompts -> prompts
+- text explanations / markdown -> docs or notes
+- datasets / csv / json data -> datasets
 - config files -> config
-- shell scripts / utility scripts -> scripts
 - tests -> tests
-- model files / ML logic -> models
-- notebooks / experiments -> experiments
 - images / static media -> assets
+- notebooks / experiments -> experiments
 
 Folder naming rules:
-- Folder names must be VERY SHORT.
-- Maximum 2 words.
-- Prefer 1 word.
+- You are free to invent folder names based on the actual content.
+- Do NOT choose from a fixed set.
+- Folder names should be meaningful and specific to the project.
+- Folder names must be short.
+- Maximum 2 words per folder.
+- Prefer 1 word when possible.
 - Use lowercase.
-- Use simple names.
-- Do NOT use long descriptive folder names.
-- Do NOT use names like "python_scripts_related_to_ai".
-- Good names: backend, frontend, docs, data, config, scripts, tests, models, experiments, assets, notes.
-- Reuse existing folders if they are suitable.
-- Create new folders only when needed.
+- Use snake_case if needed.
+- Good examples: api, views, auth, datasets, prompts, invoices, notes, scraping, components, experiments.
+- Bad examples: python_files, random_files, miscellaneous_documents, files_related_to_ai.
+- Reuse existing folders only if they are actually suitable.
+- Create new folders only if at least one file will be moved there.
+- Do not create empty folders.
 - Avoid excessive nesting.
 - Maximum nesting depth: 2 folders.
-- Do not create folders for single files unless truly useful.
-- Similar files should go into the same folder.
 - If a file is already in a good location, leave it unmoved.
 
 Safety rules:
@@ -228,6 +208,9 @@ Safety rules:
 - Move only files, never folders.
 - Destination paths must remain inside the project.
 - Every "to" path must include the original filename.
+- Do not move files into ignored folders.
+- Do not use absolute paths.
+- Do not use ".." in paths.
 
 Existing folders:
 {json.dumps(existing_dirs, indent=2)}
@@ -236,13 +219,10 @@ Return exactly this JSON structure:
 
 {{
   "summary": "Short summary of the organization.",
-  "directories": [
-    "short_folder_name"
-  ],
   "moves": [
     {{
       "from": "old/relative/file.txt",
-      "to": "short_folder_name/file.txt",
+      "to": "ai_chosen_folder/original_filename.txt",
       "reason": "Short reason based on content similarity"
     }}
   ]
@@ -292,81 +272,64 @@ def validate_relative_path(path_string):
     return path
 
 
-def clean_folder_name(name):
+def clean_folder_part(name):
     """
-    Converts model folder names into short, safe folder names.
+    Cleans one folder name part while preserving the AI's choice.
 
     Example:
-    'python_scripts_related_to_ai' -> 'scripts'
-    'Machine Learning Models' -> 'models'
+    'Machine Learning Notes' -> 'machine_learning'
+    'API Routes!!!' -> 'api_routes'
     """
     name = str(name).strip().lower()
     name = name.replace("\\", "/")
-
-    parts = [p for p in name.split("/") if p]
-    name = parts[0] if parts else "misc"
+    name = name.split("/")[-1]
 
     name = name.replace(" ", "_")
     name = "".join(ch for ch in name if ch.isalnum() or ch in "_-")
 
-    if name in ALLOWED_FOLDER_REPLACEMENTS:
-        return ALLOWED_FOLDER_REPLACEMENTS[name]
-
-    if "frontend" in name or "ui" in name:
-        return "frontend"
-
-    if "backend" in name or "api" in name or "flask" in name:
-        return "backend"
-
-    if "doc" in name or "readme" in name:
-        return "docs"
-
-    if "data" in name or "dataset" in name or "csv" in name:
-        return "data"
-
-    if "config" in name or "setting" in name or "env" in name:
-        return "config"
-
-    if "test" in name:
-        return "tests"
-
-    if "script" in name or "utility" in name or "helper" in name:
-        return "scripts"
-
-    if "model" in name or "ml" in name or "ai" in name:
-        return "models"
-
-    if "asset" in name or "image" in name or "style" in name:
-        return "assets"
-
-    if "experiment" in name or "notebook" in name:
-        return "experiments"
-
-    if "note" in name:
-        return "notes"
-
     chunks = [c for c in name.replace("-", "_").split("_") if c]
 
-    if len(chunks) > 2:
-        name = chunks[0]
-    else:
-        name = "_".join(chunks)
+    # Keep folder names short: max 2 words
+    chunks = chunks[:2]
 
-    if not name:
+    cleaned = "_".join(chunks)
+
+    if not cleaned:
         return "misc"
 
-    if len(name) > 16:
-        return "misc"
+    # Avoid absurdly long folder names
+    if len(cleaned) > 32:
+        cleaned = cleaned[:32].rstrip("_-")
 
-    return name
+    return cleaned or "misc"
+
+
+def clean_folder_path(path):
+    """
+    Cleans a model-generated folder path.
+    Allows max nesting depth of 2.
+
+    Example:
+    'Backend/API Routes/file.py' -> 'backend/api_routes'
+    """
+    path = str(path).strip().replace("\\", "/")
+    parts = [p for p in path.split("/") if p and p not in {".", ".."}]
+
+    cleaned_parts = [clean_folder_part(part) for part in parts[:2]]
+
+    if not cleaned_parts:
+        return Path("misc")
+
+    return Path(*cleaned_parts)
 
 
 def normalize_plan(plan):
     """
     Cleans the model plan before applying it.
-    - Forces short folder names.
+    - Preserves AI-generated folder names.
+    - Sanitizes folder names for filesystem safety.
     - Ensures destination filename stays the same.
-    - Prevents long generated directories.
+    - Derives directories only from actual moves.
     """
     normalized_dirs = set()
     normalized_moves = []
@@ -384,17 +347,21 @@ def normalize_plan(plan):
 
         original_filename = source_path.name
 
-        if len(destination_path.parts) >= 2:
-            folder = clean_folder_name(destination_path.parts[0])
-        else:
-            folder = clean_folder_name(destination_path.parent.name)
+        # If AI returns only a filename, skip because there is no folder decision
+        if len(destination_path.parts) < 2:
+            continue
 
-        final_destination = str(Path(folder) / original_filename)
+        folder_path = clean_folder_path(destination_path.parent)
+
+        if str(folder_path).split("/")[0] in IGNORED_DIRS:
+            continue
+
+        final_destination = str(folder_path / original_filename)
 
         if source == final_destination:
             continue
 
-        normalized_dirs.add(folder)
+        normalized_dirs.add(str(folder_path))
 
         normalized_moves.append({
             "from": source,
@@ -432,25 +399,57 @@ def unique_destination_path(destination: Path):
         counter += 1
 
 
-def apply_organization_plan(plan):
-    created_dirs = []
-    moved_files = []
-    skipped_files = []
+def remove_empty_folders(candidate_dirs):
+    """
+    Removes empty folders caused by organization.
+    Only removes folders inside BASE_DIR.
+    Never removes BASE_DIR itself.
+    Never removes ignored/system folders.
+    """
+    removed = []
 
-    directories = plan.get("directories", [])
-    moves = plan.get("moves", [])
+    paths = []
 
-    for directory in directories:
+    for directory in candidate_dirs:
         try:
             relative_dir = validate_relative_path(directory)
-            target_dir = safe_path(relative_dir)
-            target_dir.mkdir(parents=True, exist_ok=True)
-            created_dirs.append(str(relative_dir))
-        except Exception as e:
-            skipped_files.append({
-                "path": directory,
-                "reason": f"Could not create directory: {e}"
-            })
+            path = safe_path(relative_dir)
+
+            if path == BASE_DIR:
+                continue
+
+            if not path.exists() or not path.is_dir():
+                continue
+
+            if path.name in IGNORED_DIRS or path.name.startswith("."):
+                continue
+
+            paths.append(path)
+
+        except Exception:
+            continue
+
+    # Remove deepest folders first
+    paths = sorted(set(paths), key=lambda p: len(p.parts), reverse=True)
+
+    for path in paths:
+        try:
+            if path.exists() and path.is_dir() and not any(path.iterdir()):
+                path.rmdir()
+                removed.append(str(path.relative_to(BASE_DIR)))
+        except Exception:
+            pass
+
+    return removed
+
+
+def apply_organization_plan(plan):
+    created_dirs = set()
+    moved_files = []
+    skipped_files = []
+    cleanup_candidates = set()
+
+    moves = plan.get("moves", [])
 
     for move in moves:
         source_relative = move.get("from", "")
@@ -482,7 +481,11 @@ def apply_organization_plan(plan):
                 })
                 continue
 
+            old_parent = source_path.parent
+
             destination_path.parent.mkdir(parents=True, exist_ok=True)
+            created_dirs.add(str(destination_path.parent.relative_to(BASE_DIR)))
+
             final_destination = unique_destination_path(destination_path)
 
             shutil.move(str(source_path), str(final_destination))
@@ -493,16 +496,37 @@ def apply_organization_plan(plan):
                 "reason": reason
             })
 
+            try:
+                cleanup_candidates.add(str(old_parent.relative_to(BASE_DIR)))
+            except ValueError:
+                pass
+
         except Exception as e:
             skipped_files.append({
                 "path": source_relative,
                 "reason": str(e)
             })
 
+    removed_empty_dirs = remove_empty_folders(cleanup_candidates)
+
+    # Keep only folders that still exist and are not empty
+    real_created_dirs = []
+
+    for directory in sorted(created_dirs):
+        try:
+            path = safe_path(validate_relative_path(directory))
+
+            if path.exists() and path.is_dir() and any(path.iterdir()):
+                real_created_dirs.append(directory)
+
+        except Exception:
+            pass
+
     return {
-        "created_dirs": created_dirs,
+        "created_dirs": real_created_dirs,
         "moved_files": moved_files,
-        "skipped_files": skipped_files
+        "skipped_files": skipped_files,
+        "removed_empty_dirs": removed_empty_dirs
     }
 
 
@@ -593,14 +617,16 @@ def organize_files():
         moved_count = len(result["moved_files"])
         dir_count = len(result["created_dirs"])
         skipped_count = len(result["skipped_files"])
+        removed_empty_count = len(result.get("removed_empty_dirs", []))
 
         summary = plan.get("summary", "Organization completed.")
 
         reply = (
             f"{summary}\n\n"
-            f"Created folders: {dir_count}\n"
+            f"Created non-empty folders: {dir_count}\n"
             f"Moved files: {moved_count}\n"
-            f"Skipped files: {skipped_count}"
+            f"Skipped files: {skipped_count}\n"
+            f"Removed empty folders: {removed_empty_count}"
         )
 
         if moved_count > 0:
@@ -608,6 +634,12 @@ def organize_files():
 
             for move in result["moved_files"][:8]:
                 reply += f"- {move['from']} → {move['to']}\n"
+
+        if result.get("removed_empty_dirs"):
+            reply += "\nRemoved empty folders:\n"
+
+            for folder in result["removed_empty_dirs"][:8]:
+                reply += f"- {folder}\n"
 
         if skipped_count > 0:
             reply += "\nSome files were skipped for safety or because they were already correctly placed."
