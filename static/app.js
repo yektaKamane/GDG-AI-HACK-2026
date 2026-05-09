@@ -4,8 +4,9 @@ const currentPathEl = document.getElementById("currentPath");
 const messagesEl = document.getElementById("messages");
 const chatForm = document.getElementById("chatForm");
 const chatInput = document.getElementById("chatInput");
+const organizeButton = document.getElementById("organizeButton");
 
-const organizeBtn = document.getElementById("organizeBtn");
+let selectedPath = "";
 
 async function loadTree() {
     const res = await fetch("/api/tree");
@@ -13,8 +14,6 @@ async function loadTree() {
 
     treeEl.innerHTML = "";
     treeEl.appendChild(renderTreeNode(data));
-
-    loadFiles("");
 }
 
 function renderTreeNode(node) {
@@ -24,11 +23,17 @@ function renderTreeNode(node) {
     item.className = "tree-node";
     item.textContent = `${node.type === "folder" ? "📁" : "📄"} ${node.name}`;
 
+    if (node.path === selectedPath) {
+        item.classList.add("selected");
+    }
+
     item.addEventListener("click", (event) => {
         event.stopPropagation();
 
         if (node.type === "folder") {
+            selectedPath = node.path;
             loadFiles(node.path);
+            loadTree();
         }
     });
 
@@ -59,7 +64,13 @@ async function loadFiles(path) {
         return;
     }
 
+    selectedPath = data.current_path || "";
     currentPathEl.textContent = data.current_path || "/";
+
+    if (data.files.length === 0) {
+        filesEl.innerHTML = `<div class="empty-state">This folder is empty.</div>`;
+        return;
+    }
 
     data.files.forEach(file => {
         const row = document.createElement("div");
@@ -68,9 +79,9 @@ async function loadFiles(path) {
         row.innerHTML = `
             <div>
                 <div class="file-name">
-                    ${file.type === "folder" ? "📁" : "📄"} ${file.name}
+                    ${file.type === "folder" ? "📁" : "📄"} ${escapeHtml(file.name)}
                 </div>
-                <div class="file-meta">${file.path}</div>
+                <div class="file-meta">${escapeHtml(file.path)}</div>
             </div>
             <div class="file-meta">
                 ${file.type === "folder" ? "Folder" : formatBytes(file.size)}
@@ -78,7 +89,11 @@ async function loadFiles(path) {
         `;
 
         if (file.type === "folder") {
-            row.addEventListener("click", () => loadFiles(file.path));
+            row.addEventListener("click", () => {
+                selectedPath = file.path;
+                loadFiles(file.path);
+                loadTree();
+            });
         }
 
         filesEl.appendChild(row);
@@ -104,6 +119,16 @@ function addMessage(role, text) {
     messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+function setOrganizeLoading(isLoading) {
+    organizeButton.disabled = isLoading;
+    organizeButton.textContent = isLoading ? "Organizing..." : "Organize";
+}
+
+async function refreshExplorer() {
+    await loadTree();
+    await loadFiles(selectedPath);
+}
+
 chatForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -113,56 +138,70 @@ chatForm.addEventListener("submit", async (event) => {
     addMessage("user", text);
     chatInput.value = "";
 
-    const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ message: text })
-    });
-
-    const data = await res.json();
-
-    if (data.reply) {
-        addMessage("bot", data.reply);
-    } else {
-        addMessage("bot", "Something went wrong.");
-    }
-});
-
-organizeBtn.addEventListener("click", async () => {
-    organizeBtn.disabled = true;
-    organizeBtn.textContent = "Organizing...";
-
-    addMessage("bot", "I am analyzing the files and organizing the directory...");
-
     try {
-        const res = await fetch("/api/organize", {
-            method: "POST"
+        const res = await fetch("/api/chat", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ message: text })
         });
 
         const data = await res.json();
 
-        if (data.error) {
-            addMessage("bot", `Organization failed: ${data.error}`);
+        if (data.reply) {
+            addMessage("bot", data.reply);
         } else {
-            const movedCount = data.completed.length;
-            const skippedCount = data.skipped.length;
-
-            addMessage(
-                "bot",
-                `${data.summary}\n\nMoved files: ${movedCount}\nSkipped files: ${skippedCount}`
-            );
-
-            await loadTree();
-            await loadFiles("");
+            addMessage("bot", data.error || "Something went wrong.");
         }
     } catch (error) {
-        addMessage("bot", `Organization failed: ${error.message}`);
+        addMessage("bot", "Could not contact the backend.");
     }
-
-    organizeBtn.disabled = false;
-    organizeBtn.textContent = "Organize";
 });
 
-loadTree();
+organizeButton.addEventListener("click", async () => {
+    addMessage("user", "Organize this project directory.");
+    addMessage("bot", "I am analyzing the files and preparing an organization plan...");
+
+    setOrganizeLoading(true);
+
+    try {
+        const res = await fetch("/api/organize", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            }
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            addMessage("bot", data.error || "Organization failed.");
+            return;
+        }
+
+        addMessage("bot", data.reply || "Organization completed.");
+        await refreshExplorer();
+
+    } catch (error) {
+        addMessage("bot", "Could not contact the backend while organizing.");
+    } finally {
+        setOrganizeLoading(false);
+    }
+});
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+async function init() {
+    await loadTree();
+    await loadFiles("");
+}
+
+init();
