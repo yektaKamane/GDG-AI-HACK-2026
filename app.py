@@ -1,6 +1,5 @@
 from flask import Flask, render_template, jsonify, request
 from pathlib import Path
-import os
 import json
 import shutil
 import requests
@@ -12,15 +11,43 @@ BASE_DIR = Path("/Users/riccardoinfascelli/Desktop/Hackathon/GDG-AI-HACK-2026/Pr
 
 # Ollama settings
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-OLLAMA_MODEL = "llama3.1"  # change this if your local model has another name
+OLLAMA_MODEL = "llama3.1"  # Change this if your local model has another name
 
-MAX_FILE_PREVIEW_CHARS = 2500
+MAX_FILE_PREVIEW_CHARS = 4000
 MAX_TOTAL_FILES_FOR_AI = 80
 
 TEXT_EXTENSIONS = {
     ".txt", ".md", ".py", ".js", ".html", ".css", ".json", ".csv",
     ".xml", ".yaml", ".yml", ".java", ".cpp", ".c", ".h", ".hpp",
     ".ts", ".tsx", ".jsx", ".sql", ".sh", ".ini", ".cfg", ".log"
+}
+
+IGNORED_DIRS = {
+    "venv", ".venv", "__pycache__", ".git", "node_modules",
+    ".idea", ".vscode", "dist", "build"
+}
+
+ALLOWED_FOLDER_REPLACEMENTS = {
+    "python": "scripts",
+    "python_files": "scripts",
+    "javascript": "frontend",
+    "html": "frontend",
+    "css": "frontend",
+    "markdown": "docs",
+    "documents": "docs",
+    "documentation": "docs",
+    "configuration": "config",
+    "configs": "config",
+    "settings": "config",
+    "datasets": "data",
+    "dataset": "data",
+    "csv": "data",
+    "json_data": "data",
+    "machine_learning": "models",
+    "ml": "models",
+    "ai": "models",
+    "utilities": "scripts",
+    "helpers": "scripts",
 }
 
 
@@ -41,6 +68,9 @@ def build_tree(path: Path):
             if item.name.startswith("."):
                 continue
 
+            if item.is_dir() and item.name in IGNORED_DIRS:
+                continue
+
             node = {
                 "name": item.name,
                 "path": str(item.relative_to(BASE_DIR)),
@@ -51,6 +81,7 @@ def build_tree(path: Path):
                 node["children"] = build_tree(item)
 
             children.append(node)
+
     except PermissionError:
         pass
 
@@ -89,14 +120,9 @@ def collect_files_for_ai():
         if path.name.startswith("."):
             continue
 
-        # Avoid scanning virtual environments, caches, and hidden folders
         relative_parts = path.relative_to(BASE_DIR).parts
-        ignored_dirs = {
-            "venv", ".venv", "__pycache__", ".git", "node_modules",
-            ".idea", ".vscode", "dist", "build"
-        }
 
-        if any(part in ignored_dirs for part in relative_parts):
+        if any(part in IGNORED_DIRS for part in relative_parts):
             continue
 
         preview = read_file_preview(path)
@@ -104,8 +130,11 @@ def collect_files_for_ai():
         if preview is None:
             continue
 
+        relative_path = path.relative_to(BASE_DIR)
+
         collected.append({
-            "path": str(path.relative_to(BASE_DIR)),
+            "path": str(relative_path),
+            "current_folder": str(relative_path.parent) if str(relative_path.parent) != "." else "",
             "name": path.name,
             "extension": path.suffix.lower(),
             "preview": preview
@@ -137,44 +166,84 @@ def extract_json_from_llm_response(text):
 
 
 def ask_ollama_for_organization(files):
+    existing_dirs = sorted({
+        str(path.relative_to(BASE_DIR))
+        for path in BASE_DIR.rglob("*")
+        if path.is_dir()
+        and not path.name.startswith(".")
+        and path.name not in IGNORED_DIRS
+    })
+
     prompt = f"""
-You are an AI file organizer.
+You are an expert AI file organizer.
 
-You will receive a list of files from a project directory.
+You will receive files from a project directory.
 Each file includes:
-- path
-- name
+- relative path
+- filename
 - extension
-- preview of its content
+- current folder
+- a preview of the file content
 
-Your task:
-Create the most logical folder organization based on file contents and purpose.
+Your goal:
+Reorganize files by CONTENT and PURPOSE, not just extension.
 
-Important rules:
-- Return ONLY valid JSON.
-- Do not include markdown.
-- Do not explain outside JSON.
-- Do not move folders, only files.
-- Do not rename files.
-- Keep destination paths inside the project directory.
-- Use simple folder names.
-- Group similar files together.
-- If a file is already in the right place, you may leave it unmoved.
+You must group files that belong together.
+
+Examples:
+- Python backend code -> backend
+- Flask routes / API files -> backend
+- HTML/CSS/JS UI files -> frontend
+- text explanations / markdown -> docs
+- datasets / csv / json data -> data
+- config files -> config
+- shell scripts / utility scripts -> scripts
+- tests -> tests
+- model files / ML logic -> models
+- notebooks / experiments -> experiments
+- images / static media -> assets
+
+Folder naming rules:
+- Folder names must be VERY SHORT.
+- Maximum 2 words.
+- Prefer 1 word.
+- Use lowercase.
+- Use simple names.
+- Do NOT use long descriptive folder names.
+- Do NOT use names like "python_scripts_related_to_ai".
+- Good names: backend, frontend, docs, data, config, scripts, tests, models, experiments, assets, notes.
+- Reuse existing folders if they are suitable.
+- Create new folders only when needed.
 - Avoid excessive nesting.
+- Maximum nesting depth: 2 folders.
+- Do not create folders for single files unless truly useful.
+- Similar files should go into the same folder.
+- If a file is already in a good location, leave it unmoved.
 
-Return this exact JSON structure:
+Safety rules:
+- Return ONLY valid JSON.
+- No markdown.
+- No comments outside JSON.
+- Do not rename files.
+- Move only files, never folders.
+- Destination paths must remain inside the project.
+- Every "to" path must include the original filename.
+
+Existing folders:
+{json.dumps(existing_dirs, indent=2)}
+
+Return exactly this JSON structure:
 
 {{
-  "summary": "Short human-readable summary of the organization.",
+  "summary": "Short summary of the organization.",
   "directories": [
-    "folder_name",
-    "another_folder"
+    "short_folder_name"
   ],
   "moves": [
     {{
       "from": "old/relative/file.txt",
-      "to": "new/relative/file.txt",
-      "reason": "Why this move makes sense"
+      "to": "short_folder_name/file.txt",
+      "reason": "Short reason based on content similarity"
     }}
   ]
 }}
@@ -183,12 +252,19 @@ Files:
 {json.dumps(files, indent=2)}
 """
 
-    response = requests.post("http://127.0.0.1:11434/api/generate", json={
-        "model": "gemma3:1b",
-        "prompt": prompt,
-        "stream": False,
-        "format": "json"
-    })
+    response = requests.post(
+        OLLAMA_URL,
+        json={
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json",
+            "options": {
+                "temperature": 0.1
+            }
+        },
+        timeout=180
+    )
 
     print("STATUS:", response.status_code)
     print("TEXT:", response.text)
@@ -217,6 +293,123 @@ def validate_relative_path(path_string):
         raise ValueError(f"Parent directory references are not allowed: {path_string}")
 
     return path
+
+
+def clean_folder_name(name):
+    """
+    Converts model folder names into short, safe folder names.
+
+    Example:
+    'python_scripts_related_to_ai' -> 'scripts'
+    'Machine Learning Models' -> 'models'
+    """
+    name = str(name).strip().lower()
+    name = name.replace("\\", "/")
+
+    parts = [p for p in name.split("/") if p]
+    name = parts[0] if parts else "misc"
+
+    name = name.replace(" ", "_")
+    name = "".join(ch for ch in name if ch.isalnum() or ch in "_-")
+
+    if name in ALLOWED_FOLDER_REPLACEMENTS:
+        return ALLOWED_FOLDER_REPLACEMENTS[name]
+
+    if "frontend" in name or "ui" in name:
+        return "frontend"
+
+    if "backend" in name or "api" in name or "flask" in name:
+        return "backend"
+
+    if "doc" in name or "readme" in name:
+        return "docs"
+
+    if "data" in name or "dataset" in name or "csv" in name:
+        return "data"
+
+    if "config" in name or "setting" in name or "env" in name:
+        return "config"
+
+    if "test" in name:
+        return "tests"
+
+    if "script" in name or "utility" in name or "helper" in name:
+        return "scripts"
+
+    if "model" in name or "ml" in name or "ai" in name:
+        return "models"
+
+    if "asset" in name or "image" in name or "style" in name:
+        return "assets"
+
+    if "experiment" in name or "notebook" in name:
+        return "experiments"
+
+    if "note" in name:
+        return "notes"
+
+    chunks = [c for c in name.replace("-", "_").split("_") if c]
+
+    if len(chunks) > 2:
+        name = chunks[0]
+    else:
+        name = "_".join(chunks)
+
+    if not name:
+        return "misc"
+
+    if len(name) > 16:
+        return "misc"
+
+    return name
+
+
+def normalize_plan(plan):
+    """
+    Cleans the model plan before applying it.
+    - Forces short folder names.
+    - Ensures destination filename stays the same.
+    - Prevents long generated directories.
+    """
+    normalized_dirs = set()
+    normalized_moves = []
+
+    for move in plan.get("moves", []):
+        source = move.get("from", "")
+        destination = move.get("to", "")
+        reason = move.get("reason", "")
+
+        if not source or not destination:
+            continue
+
+        source_path = Path(source)
+        destination_path = Path(destination)
+
+        original_filename = source_path.name
+
+        if len(destination_path.parts) >= 2:
+            folder = clean_folder_name(destination_path.parts[0])
+        else:
+            folder = clean_folder_name(destination_path.parent.name)
+
+        final_destination = str(Path(folder) / original_filename)
+
+        if source == final_destination:
+            continue
+
+        normalized_dirs.add(folder)
+
+        normalized_moves.append({
+            "from": source,
+            "to": final_destination,
+            "reason": reason[:160]
+        })
+
+    return {
+        "summary": plan.get("summary", "Files were reorganized by content and purpose."),
+        "directories": sorted(normalized_dirs),
+        "moves": normalized_moves
+    }
 
 
 def unique_destination_path(destination: Path):
@@ -350,6 +543,9 @@ def get_files():
             if item.name.startswith("."):
                 continue
 
+            if item.is_dir() and item.name in IGNORED_DIRS:
+                continue
+
             stat = item.stat()
 
             files.append({
@@ -358,6 +554,7 @@ def get_files():
                 "type": "folder" if item.is_dir() else "file",
                 "size": stat.st_size if item.is_file() else None,
             })
+
     except PermissionError:
         return jsonify({"error": "Permission denied"}), 403
 
@@ -375,8 +572,6 @@ def chat():
     if not message:
         return jsonify({"error": "Empty message"}), 400
 
-    # Simple chatbot endpoint.
-    # You can later connect this to Ollama too.
     bot_reply = f"You said: {message}"
 
     return jsonify({
@@ -394,7 +589,8 @@ def organize_files():
                 "reply": "I could not find readable text/code files to organize."
             })
 
-        plan = ask_ollama_for_organization(files)
+        raw_plan = ask_ollama_for_organization(files)
+        plan = normalize_plan(raw_plan)
         result = apply_organization_plan(plan)
 
         moved_count = len(result["moved_files"])
@@ -412,6 +608,7 @@ def organize_files():
 
         if moved_count > 0:
             reply += "\n\nMain moves:\n"
+
             for move in result["moved_files"][:8]:
                 reply += f"- {move['from']} → {move['to']}\n"
 
@@ -420,6 +617,7 @@ def organize_files():
 
         return jsonify({
             "reply": reply,
+            "raw_plan": raw_plan,
             "plan": plan,
             "result": result
         })
