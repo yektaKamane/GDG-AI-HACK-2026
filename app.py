@@ -182,9 +182,9 @@ Examples:
 - images / static media -> assets
 - notebooks / experiments -> experiments
 
+
 Folder naming rules:
 - You are free to invent folder names based on the actual content.
-- Do NOT choose from a fixed set.
 - Folder names should be meaningful and specific to the project.
 - Folder names must be short.
 - Maximum 2 words per folder.
@@ -197,8 +197,9 @@ Folder naming rules:
 - Create new folders only if at least one file will be moved there.
 - Do not create empty folders.
 - Avoid excessive nesting.
-- Maximum nesting depth: 2 folders.
+- Maximum nesting depth: 3 folders.
 - If a file is already in a good location, leave it unmoved.
+- You are encouraged to be creative in naming folders based on the content.
 
 Safety rules:
 - Return ONLY valid JSON.
@@ -219,8 +220,6 @@ Return ONLY valid JSON with this structure.
 
 The "to" value must be a real folder name chosen by you based on the file content.
 Do not use placeholder folder names like:
-- ai_chosen_folder
-- ai_chosen
 - chosen_folder
 - folder_name
 - category
@@ -259,7 +258,6 @@ Example response:
 
 Important:
 - The strings above are placeholders.
-- Do NOT copy "actual", "file", "path", "meaningful_folder", or "original_filename".
 - Replace every placeholder with real paths from the provided file list.
 - The "from" value must exactly match one of the provided file paths.
 - The "to" value must contain the same original filename as "from".
