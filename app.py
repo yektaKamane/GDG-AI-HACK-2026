@@ -217,16 +217,44 @@ Existing folders:
 
 Return ONLY valid JSON in this shape:
 
-{{
-  "summary": "Short summary of what you changed.",
+Return ONLY valid JSON with this structure.
+
+The "to" value must be a real folder name chosen by you based on the file content.
+Do not use placeholder folder names like:
+- ai_chosen_folder
+- folder_name
+- category
+- destination
+- old
+- new
+
+Example response:
+
+{
+  "summary": "Grouped files by project purpose.",
   "moves": [
-    {{
-      "from": "actual/file/path.ext",
-      "to": "meaningful_folder/original_filename.ext",
-      "reason": "Short reason based on the file content"
-    }}
+    {
+      "from": "app.py",
+      "to": "server/app.py",
+      "reason": "Contains Flask server routes and backend logic."
+    },
+    {
+      "from": "templates/index.html",
+      "to": "pages/index.html",
+      "reason": "HTML page template for the user interface."
+    },
+    {
+      "from": "styles/main.css",
+      "to": "ui/main.css",
+      "reason": "Stylesheet for the frontend interface."
+    },
+    {
+      "from": "notes/ideas.md",
+      "to": "planning/ideas.md",
+      "reason": "Project planning notes and ideas."
+    }
   ]
-}}
+}
 
 Important:
 - The strings above are placeholders.
