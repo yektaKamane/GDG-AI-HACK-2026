@@ -215,46 +215,47 @@ Safety rules:
 Existing folders:
 {json.dumps(existing_dirs, indent=2)}
 
-Return ONLY valid JSON in this shape:
-
 Return ONLY valid JSON with this structure.
 
 The "to" value must be a real folder name chosen by you based on the file content.
 Do not use placeholder folder names like:
 - ai_chosen_folder
+- ai_chosen
+- chosen_folder
 - folder_name
 - category
 - destination
 - old
 - new
+- target_folder
 
 Example response:
 
-{
+{{
   "summary": "Grouped files by project purpose.",
   "moves": [
-    {
+    {{
       "from": "app.py",
       "to": "server/app.py",
       "reason": "Contains Flask server routes and backend logic."
-    },
-    {
+    }},
+    {{
       "from": "templates/index.html",
       "to": "pages/index.html",
       "reason": "HTML page template for the user interface."
-    },
-    {
+    }},
+    {{
       "from": "styles/main.css",
       "to": "ui/main.css",
       "reason": "Stylesheet for the frontend interface."
-    },
-    {
+    }},
+    {{
       "from": "notes/ideas.md",
       "to": "planning/ideas.md",
       "reason": "Project planning notes and ideas."
-    }
+    }}
   ]
-}
+}}
 
 Important:
 - The strings above are placeholders.
