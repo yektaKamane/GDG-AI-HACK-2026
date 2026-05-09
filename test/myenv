@@ -1,0 +1,6 @@
+# Your target folder
+BASE_DIR = Path("C:\\Users\\Dario\\Desktop\\HACKATON\\GDG-AI-HACK-2026\\Project\\PROVA").resolve()
+
+# Ollama settings
+OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "phi3"  # change this if your local model has another name

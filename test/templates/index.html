@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>File Explorer Chatbot</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+    <div class="app">
+        <aside class="sidebar">
+            <div class="panel-title">Project Tree</div>
+            <div id="tree"></div>
+        </aside>
+
+        <main class="files-panel">
+            <div class="panel-title">
+                Files
+                <span id="currentPath"></span>
+            </div>
+            <div id="files"></div>
+        </main>
+
+        <section class="chat-panel">
+            <div class="chat-header">
+                <div class="panel-title">Chatbot</div>
+                <button id="organizeButton" class="organize-button" type="button">
+                    Organize
+                </button>
+            </div>
+
+            <div id="messages" class="messages"></div>
+
+            <form id="chatForm" class="chat-form">
+                <input 
+                    id="chatInput" 
+                    type="text" 
+                    placeholder="Write your prompt..." 
+                    autocomplete="off"
+                />
+                <button type="submit">Send</button>
+            </form>
+        </section>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
