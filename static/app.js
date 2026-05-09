@@ -5,6 +5,8 @@ const messagesEl = document.getElementById("messages");
 const chatForm = document.getElementById("chatForm");
 const chatInput = document.getElementById("chatInput");
 
+const organizeBtn = document.getElementById("organizeBtn");
+
 async function loadTree() {
     const res = await fetch("/api/tree");
     const data = await res.json();
@@ -126,6 +128,41 @@ chatForm.addEventListener("submit", async (event) => {
     } else {
         addMessage("bot", "Something went wrong.");
     }
+});
+
+organizeBtn.addEventListener("click", async () => {
+    organizeBtn.disabled = true;
+    organizeBtn.textContent = "Organizing...";
+
+    addMessage("bot", "I am analyzing the files and organizing the directory...");
+
+    try {
+        const res = await fetch("/api/organize", {
+            method: "POST"
+        });
+
+        const data = await res.json();
+
+        if (data.error) {
+            addMessage("bot", `Organization failed: ${data.error}`);
+        } else {
+            const movedCount = data.completed.length;
+            const skippedCount = data.skipped.length;
+
+            addMessage(
+                "bot",
+                `${data.summary}\n\nMoved files: ${movedCount}\nSkipped files: ${skippedCount}`
+            );
+
+            await loadTree();
+            await loadFiles("");
+        }
+    } catch (error) {
+        addMessage("bot", `Organization failed: ${error.message}`);
+    }
+
+    organizeBtn.disabled = false;
+    organizeBtn.textContent = "Organize";
 });
 
 loadTree();

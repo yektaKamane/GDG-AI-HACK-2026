@@ -160,3 +160,28 @@ body {
 .chat-form button:hover {
     background: #2563eb;
 }
+
+
+.chat-title {
+    align-items: center;
+}
+
+.organize-btn {
+    border: none;
+    border-radius: 999px;
+    padding: 7px 13px;
+    background: #22c55e;
+    color: #052e16;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.organize-btn:hover {
+    background: #16a34a;
+}
+
+.organize-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
