@@ -1,7 +1,0 @@
-Ollama permette di eseguire modelli linguistici direttamente in locale.
-Gemma viene utilizzato per creare riassunti e parole chiave automatiche.
-I prompt sono progettati per restituire output JSON strutturati.
-Il parsing dei risultati richiede controlli contro output malformati.
-Le API locali comunicano tramite richieste HTTP standard.
-Questo rende semplice integrare AI in applicazioni Flask esistenti.
-Il sistema può essere esteso con modelli più grandi in futuro.

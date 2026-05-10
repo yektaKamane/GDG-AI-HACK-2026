@@ -1,7 +1,0 @@
-Il sistema di organizzazione automatica utilizza modelli linguistici locali.
-Ogni file viene letto e trasformato in una rappresentazione semantica.
-Gli embedding vengono salvati in un database vettoriale persistente.
-L’intelligenza artificiale suggerisce la cartella più adatta al contenuto.
-L’utente può approvare o rifiutare ogni singolo spostamento.
-Tutte le operazioni vengono eseguite direttamente sul computer locale.
-Questo approccio garantisce maggiore privacy e controllo sui dati.
