@@ -23,11 +23,18 @@
         <section class="chat-panel">
             <div class="chat-header">
                 <div class="panel-title">Chatbot</div>
-                <button id="organizeButton" class="organize-button" type="button">
-                    Organize
-                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button id="organizeButton" class="organize-button" type="button">
+                        Organize
+                    </button>
+                    <button id="organizePhotosButton" class="organize-button" type="button" style="display: none">
+                        Organize Photos
+                    </button>
+                    <button id="organizeExFolderButton" class="organize-button" type="button" style="display: none">
+                        Organize Ex. Folders
+                    </button>
+                </div>
             </div>
-
             <div id="messages" class="messages"></div>
 
             <form id="chatForm" class="chat-form">

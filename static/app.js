@@ -4,7 +4,11 @@ const currentPathEl = document.getElementById("currentPath");
 const messagesEl = document.getElementById("messages");
 const chatForm = document.getElementById("chatForm");
 const chatInput = document.getElementById("chatInput");
+
+// Button elements
 const organizeButton = document.getElementById("organizeButton");
+const organizePhotosButton = document.getElementById("organizePhotosButton");
+const organizeExFolderButton = document.getElementById("organizeExFolderButton");
 
 let selectedPath = "";
 
@@ -119,15 +123,31 @@ function addMessage(role, text) {
     messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+// --- Loading States for Buttons ---
+
 function setOrganizeLoading(isLoading) {
     organizeButton.disabled = isLoading;
     organizeButton.textContent = isLoading ? "Organizing..." : "Organize";
 }
 
+function setOrganizePhotosLoading(isLoading) {
+    organizePhotosButton.disabled = isLoading;
+    organizePhotosButton.textContent = isLoading ? "Organizing..." : "Organize Photos";
+}
+
+function setOrganizeExFolderLoading(isLoading) {
+    organizeExFolderButton.disabled = isLoading;
+    organizeExFolderButton.textContent = isLoading ? "Organizing..." : "Ex. Folders";
+}
+
+// --- Refresh Helper ---
+
 async function refreshExplorer() {
     await loadTree();
     await loadFiles(selectedPath);
 }
+
+// --- Chat Form Listener ---
 
 chatForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -159,6 +179,9 @@ chatForm.addEventListener("submit", async (event) => {
     }
 });
 
+// --- Organize Buttons Listeners ---
+
+// 1. Original Organize Button
 organizeButton.addEventListener("click", async () => {
     addMessage("user", "Organize this project directory.");
     addMessage("bot", "I am analyzing the files and preparing an organization plan...");
@@ -187,6 +210,76 @@ organizeButton.addEventListener("click", async () => {
         addMessage("bot", "Could not contact the backend while organizing.");
     } finally {
         setOrganizeLoading(false);
+    }
+});
+
+// 2. Organize Photos Button
+organizePhotosButton.addEventListener("click", async () => {
+    addMessage("user", "Organize the photos in this directory.");
+    addMessage("bot", "I am running the vision model and clustering the photos...");
+
+    setOrganizePhotosLoading(true);
+
+    try {
+        const res = await fetch("/api/organize_photos", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            }
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            addMessage("bot", data.error || data.message || "Photo organization failed.");
+            return;
+        }
+
+        // Handle the specific JSON response structure from api_organize_photos
+        if (data.status === "success") {
+            addMessage("bot", `Success! Organized photos into ${data.clusters.length} clusters.`);
+        } else {
+            addMessage("bot", data.reply || "Photo organization completed.");
+        }
+
+        await refreshExplorer();
+
+    } catch (error) {
+        addMessage("bot", "Could not contact the backend while organizing photos.");
+    } finally {
+        setOrganizePhotosLoading(false);
+    }
+});
+
+// 3. Organize with Existing Folders Button
+organizeExFolderButton.addEventListener("click", async () => {
+    addMessage("user", "Organize files into the existing folders.");
+    addMessage("bot", "I am matching files to your current folder structure...");
+
+    setOrganizeExFolderLoading(true);
+
+    try {
+        const res = await fetch("/api/organize_with_ex_folder", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            }
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            addMessage("bot", data.error || data.message || "Organization failed.");
+            return;
+        }
+
+        addMessage("bot", data.reply || "Organization into existing folders completed.");
+        await refreshExplorer();
+
+    } catch (error) {
+        addMessage("bot", "Could not contact the backend while organizing.");
+    } finally {
+        setOrganizeExFolderLoading(false);
     }
 });
 

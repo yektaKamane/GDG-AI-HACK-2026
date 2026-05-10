@@ -1,7 +1,0 @@
-La dashboard Flask mostra l’intera struttura delle directory del progetto.
-Le cartelle vengono caricate dinamicamente tramite endpoint REST.
-Il frontend utilizza JavaScript per aggiornare l’interfaccia in tempo reale.
-Ogni file visualizzato include nome, percorso e dimensione.
-I file di testo possono essere letti direttamente dal browser.
-Il sistema è pensato per essere semplice ma facilmente estendibile.
-L’obiettivo è creare un file manager intelligente basato su AI.

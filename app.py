@@ -1,15 +1,44 @@
 from flask import Flask, render_template, jsonify, request
-from pathlib import Path
-import json
+import os
 import shutil
+import fitz  # PyMuPDF
+import ollama
+import chromadb
+import numpy as np
+# from sklearn.cluster import HDBSCAN
+# from sklearn.cluster import DBSCAN
+# from sklearn.cluster import AffinityPropagation
+from collections import Counter
+from sklearn.cluster import AgglomerativeClustering
+from sentence_transformers import SentenceTransformer
+from pathlib import Path
+
+import re
 import requests
+import numpy as np
+import torch
+from PIL import Image
+import json
+
+# Machine Learning & Vision
+import tensorflow as tf
+from tensorflow.keras.applications import EfficientNetB2
+from tensorflow.keras.preprocessing import image as keras_image
+from tensorflow.keras.applications.efficientnet import preprocess_input
+from sklearn.cluster import DBSCAN
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics.pairwise import cosine_similarity
+from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
+from qwen_vl_utils import process_vision_info
+
 
 app = Flask(__name__)
+
 
 BASE_DIR = Path("/Users/riccardoinfascelli/Desktop/Hackathon/GDG-AI-HACK-2026/Project/PROVA").resolve()
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-OLLAMA_MODEL = "gemma3:1b"
+OLLAMA_MODEL = "gemma4:e2b"
 
 MAX_FILE_PREVIEW_CHARS = 4000
 MAX_TOTAL_FILES_FOR_AI = 80
@@ -169,102 +198,182 @@ def ask_ollama_for_organization(files):
     })
 
     prompt = f"""
-You are an expert AI file organizer.
+You are an elite AI semantic file organizer.
 
-You will receive files from a project directory.
-Each file includes:
-- relative path
-- filename
-- extension
-- current folder
-- a preview of the file content
+Your ONLY goal is to organize files into REAL semantic categories.
 
-Your goal:
-Reorganize files by CONTENT and PURPOSE, not just extension.
+You MUST understand:
+- the topic
+- the subject
+- the meaning
+- the domain
+- the purpose
 
-You must group files that belong together.
+of every file.
+
+You are NOT allowed to create generic folders.
+
+==================================================
+STRICT RULES
+==================================================
+
+NEVER create folders like:
+- misc
+- other
+- random
+- files
+- documents
+- docs
+- text
+- notes
+- stuff
+- generic
+- uncategorized
+
+These folders are FORBIDDEN.
+
+You MUST ALWAYS choose:
+- a real subject
+- a real topic
+- a real domain
+- a meaningful semantic category
+
+Even if uncertain.
+
+==================================================
+GOOD CATEGORY EXAMPLES
+==================================================
+
+GOOD:
+- physics
+- chemistry
+- biology
+- math
+- calculus
+- ai
+- machine_learning
+- neural_networks
+- backend
+- frontend
+- finance
+- taxes
+- startup
+- contracts
+- recipes
+- travel
+- fitness
+- university
+- astronomy
+- climate
+- gaming
+- cybersecurity
+- legal
+- invoices
+- marketing
+- psychology
+- philosophy
+- economics
+
+BAD:
+- misc
+- docs
+- files
+- text
+- notes
+- random
+- generic
+
+==================================================
+ORGANIZATION STRATEGY
+==================================================
+
+You must organize files by:
+1. semantic topic
+2. real-world subject
+3. actual meaning
+4. project domain
+
+NOT by extension.
 
 Examples:
-- Flask routes / API files -> api
-- HTML templates -> templates
-- CSS / JS UI code -> ui or frontend
-- authentication files -> auth
-- database files -> database
-- scraping files -> scrapers
-- AI prompts -> prompts
-- text explanations / markdown -> docs or notes
-- datasets / csv / json data -> datasets
-- config files -> config
-- tests -> tests
-- images / static media -> assets
-- notebooks / experiments -> experiments
+- Python APIs -> backend
+- React UI -> frontend
+- Neural network experiments -> machine_learning
+- Physics notes -> physics
+- Recipes -> recipes
+- Tax PDFs -> taxes
+- Startup ideas -> startup
+- Contracts -> legal
+- CSV finance data -> finance
+- AI prompts -> ai
+- University exercises -> university
 
-Folder naming rules:
-- You are free to invent folder names based on the actual content.
-- Folder names should be meaningful and specific to the project.
-- Folder names must be short.
-- Maximum 2 words per folder.
-- Prefer 1 word when possible.
+==================================================
+FOLDER RULES
+==================================================
+
+- Folder names must be semantic.
+- Folder names must describe the actual topic.
+- Prefer 1 word.
+- Maximum 2 words.
 - Use lowercase.
 - Use snake_case if needed.
-- Good examples: api, views, auth, datasets, prompts, invoices, notes, scraping, components, experiments.
-- Bad examples: python_files, random_files, miscellaneous_documents, files_related_to_ai.
-- Reuse existing folders only if they are actually suitable.
-- Create new folders only if at least one file will be moved there.
-- Do not create empty folders.
-- Avoid excessive nesting.
-- Maximum nesting depth: 3 folders.
-- If a file is already in a good location, still include it in moves with "to" equal to its current path.
-- You are encouraged to be creative in naming folders based on the content.
+- Maximum nesting depth: 2.
+- Reuse existing folders if appropriate.
+- Create new folders if necessary.
+- NEVER leave a file uncategorized.
+- EVERY file MUST belong to a meaningful category.
 
-Critical move rules:
-- You must return one move decision for EVERY file in the provided file list.
-- Do not omit files.
-- If a file is already perfectly located, include it with the same path in "to".
-- If you cannot determine a specific category, move it to "misc/<original_filename>".
-- Never skip a file because no ideal folder name exists.
-- Every file must appear exactly once in "moves".
-- The "moves" array length must equal the number of provided files.
-- The "from" value must exactly match one of the provided file paths.
-- The "to" value must contain the same original filename as "from".
+==================================================
+CRITICAL RULES
+==================================================
 
-Safety rules:
-- Return ONLY valid JSON.
-- No markdown.
-- No comments outside JSON.
-- Do not rename files.
-- Move only files, never folders.
-- Destination paths must remain inside the project.
-- Every "to" path must include the original filename.
-- Do not move files into ignored folders.
-- Do not use absolute paths.
-- Do not use ".." in paths.
+- You MUST return one move for EVERY file.
+- Every file must appear EXACTLY ONCE.
+- Never omit files.
+- Never invent files.
+- The "from" field must exactly match an input file.
+- The "to" field must preserve the original filename.
+- Do NOT rename files.
+- Move ONLY files.
+- Never move folders.
+- Never use absolute paths.
+- Never use ".."
 
-Existing folders:
-{json.dumps(existing_dirs, indent=2)}
+==================================================
+OUTPUT FORMAT
+==================================================
 
-Return ONLY valid JSON with this structure:
+Return ONLY valid JSON.
+
+Example:
 
 {{
-  "summary": "Grouped files by project purpose.",
+  "summary": "Files organized by semantic topic.",
   "moves": [
     {{
-      "from": "app.py",
-      "to": "server/app.py",
-      "reason": "Contains Flask server routes and backend logic."
+      "from": "quantum_notes.txt",
+      "to": "physics/quantum_notes.txt",
+      "reason": "Contains quantum mechanics study notes."
+    }},
+    {{
+      "from": "pizza_recipe.md",
+      "to": "recipes/pizza_recipe.md",
+      "reason": "Contains cooking instructions and ingredients."
     }}
   ]
 }}
 
-Important:
-- The example above is only an example.
-- Replace every placeholder with real paths from the provided file list.
-- The "from" value must exactly match one of the provided file paths.
-- The "to" value must contain the same original filename as "from".
-- The folder in "to" must be your own meaningful category name based on content.
-- If unsure, use misc/<original_filename>.
+==================================================
+EXISTING FOLDERS
+==================================================
 
-Files:
+{json.dumps(existing_dirs, indent=2)}
+
+==================================================
+FILES TO ORGANIZE
+==================================================
+
 {json.dumps(files, indent=2)}
 """
 
@@ -417,7 +526,7 @@ def normalize_plan(plan):
 
         if len(destination_path.parts) < 2:
             debug("NORMALIZE FIX no folder from AI, forcing misc:", source, "->", destination)
-            destination_path = Path("misc") / original_filename
+            destination_path = Path("sorted") / original_filename
 
         folder_path = clean_folder_path(destination_path.parent)
 
@@ -756,6 +865,296 @@ def organize_files():
             "error": f"Organization failed: {str(e)}"
         }), 500
 
+@app.route('/api/organize_photos', methods=['POST'])
+def api_organize_photos():
+    os.system('sh pray_that_this_works.sh ./Project/PROVA/input')
+
+# @app.route('/api/organize_photos', methods=['POST'])
+# def api_organize_photos():
+#     input_dir = "./input"
+#     output_dir = "./output"
+#     marker_name = "centroid_file"
+    
+#     try:
+#         if not os.path.isdir(input_dir):
+#             return jsonify({"error": f"Directory {input_dir} not found"}), 400
+
+#         # 1. EXTRACTION OF EMBEDDINGS (EfficientNetB2)
+#         print("--- Step 1: Extracting Embeddings ---")
+#         ef_model = EfficientNetB2(weights='imagenet', include_top=False, pooling='avg')
+        
+#         valid_extensions = ('.jpg', '.jpeg', '.JPG', '.JPEG')
+#         files = [f for f in os.listdir(input_dir) if f.endswith(valid_extensions)]
+        
+#         if not files:
+#             return jsonify({"error": "No images found"}), 400
+
+#         all_embeddings = []
+#         filenames = []
+
+#         for filename in files:
+#             img_path = os.path.join(input_dir, filename)
+#             img = keras_image.load_img(img_path, target_size=(260, 260))
+#             x = keras_image.img_to_array(img)
+#             x = np.expand_dims(x, axis=0)
+#             x = preprocess_input(x)
+            
+#             embedding = ef_model.predict(x, verbose=0)
+#             all_embeddings.append(embedding.flatten())
+#             filenames.append(filename)
+
+#         embeddings_array = np.array(all_embeddings)
+#         filenames_array = np.array(filenames)
+
+#         # 2. CLUSTERING (DBSCAN)
+#         print("--- Step 2: Clustering Images ---")
+#         X_scaled = StandardScaler().fit_transform(embeddings_array)
+#         # Using cosine metric as per your cluster_images.py
+#         db = DBSCAN(eps=1.0, min_samples=2, metric='cosine').fit(X_scaled)
+#         labels = db.labels_
+
+#         os.makedirs(output_dir, exist_ok=True)
+
+#         # 3. SEMANTIC NAMING & REORGANIZATION
+#         print("--- Step 3: Naming and Moving Clusters ---")
+        
+#         # Initialize Qwen2-VL for Description
+#         v_model_id = "Qwen/Qwen2-VL-2B-Instruct"
+#         v_model = Qwen2VLForConditionalGeneration.from_pretrained(
+#             v_model_id, torch_dtype=torch.float32, device_map="cpu", low_cpu_mem_usage=True
+#         )
+#         v_processor = AutoProcessor.from_pretrained(v_model_id)
+
+#         unique_labels = set(labels)
+#         results = []
+
+#         for label in unique_labels:
+#             indices = np.where(labels == label)[0]
+#             cluster_files = filenames_array[indices]
+#             cluster_embs = embeddings_array[indices]
+
+#             # Handle Outliers
+#             if label == -1:
+#                 target_path = os.path.join(output_dir, "outliers")
+#                 os.makedirs(target_path, exist_ok=True)
+#                 for f in cluster_files:
+#                     shutil.copy(os.path.join(input_dir, f), os.path.join(target_path, f))
+#                 results.append({"label": "outliers", "count": len(cluster_files)})
+#                 continue
+
+#             # Find Centroid (Representative Image)
+#             centroid = np.mean(cluster_embs, axis=0).reshape(1, -1)
+#             similarities = cosine_similarity(cluster_embs, centroid)
+#             closest_idx = np.argmax(similarities)
+#             representative_fname = cluster_files[closest_idx]
+#             rep_img_path = os.path.join(input_dir, representative_fname)
+
+#             # Generate Semantic Description (Qwen2-VL)
+#             raw_desc = "cluster_images"
+#             try:
+#                 pil_img = Image.open(rep_img_path).convert("RGB")
+#                 msgs = [{
+#                     "role": "user",
+#                     "content": [
+#                         {"type": "image", "image": pil_img},
+#                         {"type": "text", "text": "Descrivi brevemente cosa vedi in questa immagine."}
+#                     ]
+#                 }]
+#                 v_text = v_processor.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+#                 i_in, v_in = process_vision_info(msgs)
+#                 inputs = v_processor(text=[v_text], images=i_in, videos=v_in, padding=True, return_tensors="pt").to("cpu")
+                
+#                 with torch.no_grad():
+#                     gen_ids = v_model.generate(**inputs, max_new_tokens=64)
+                
+#                 gen_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, gen_ids)]
+#                 raw_desc = v_processor.batch_decode(gen_ids_trimmed, skip_special_tokens=True)[0]
+#             except Exception as e:
+#                 print(f"Vision error: {e}")
+
+#         # # 3. SEMANTIC NAMING & REORGANIZATION
+#         # print("--- Step 3: Naming and Moving Clusters ---")
+        
+#         # # Note: We completely removed the heavy Qwen2-VL initialization here!
+#         # # Ollama will handle Moondream dynamically.
+
+#         # unique_labels = set(labels)
+#         # results = []
+
+#         # for label in unique_labels:
+#         #     indices = np.where(labels == label)[0]
+#         #     cluster_files = filenames_array[indices]
+#         #     cluster_embs = embeddings_array[indices]
+
+#         #     # Handle Outliers
+#         #     if label == -1:
+#         #         target_path = os.path.join(output_dir, "outliers")
+#         #         os.makedirs(target_path, exist_ok=True)
+#         #         for f in cluster_files:
+#         #             shutil.copy(os.path.join(input_dir, f), os.path.join(target_path, f))
+#         #         results.append({"label": "outliers", "count": len(cluster_files)})
+#         #         continue
+
+#         #     # Find Centroid (Representative Image)
+#         #     centroid = np.mean(cluster_embs, axis=0).reshape(1, -1)
+#         #     similarities = cosine_similarity(cluster_embs, centroid)
+#         #     closest_idx = np.argmax(similarities)
+#         #     representative_fname = cluster_files[closest_idx]
+#         #     rep_img_path = os.path.join(input_dir, representative_fname)
+
+#         #     # Generate Semantic Description (Moondream via Ollama)
+#         #     raw_desc = "cluster_images"
+#         #     try:
+#         #         print(f"👀 Asking Moondream to look at centroid: {representative_fname}")
+#         #         with open(rep_img_path, 'rb') as img_f:
+#         #             # Using the Italian prompt you had for Qwen
+#         #             res = ollama.generate(
+#         #                 model='moondream', 
+#         #                 prompt="Descrivi brevemente cosa vedi in questa immagine.", 
+#         #                 images=[img_f.read()]
+#         #             )
+#         #             raw_desc = res['response'].strip()
+#         #     except Exception as e:
+#         #         print(f"Vision error (Moondream): {e}")
+
+#             # Generate Folder Title (Gemma 3 via Ollama)
+#             folder_title = "semantic_cluster"
+#             try:
+#                 ollama_res = requests.post("http://localhost:11434/api/generate", json={
+#                     "model": "gemma4:e2b",
+#                     "prompt": f"Riassumi il contenuto di questo testo in una o due parole, adatte come nome di una cartella. Rispondi SOLO con le parole, niente altro.\n\nTesto: '{raw_desc}'",
+#                     "stream": False
+#                 })
+#                 folder_title = ollama_res.json()["response"].strip()
+#             except Exception as e:
+#                 print(f"Ollama error: {e}")
+
+# # --- Hardened Sanitization for Windows ---
+#             clean_title = folder_title.lower()
+            
+#             # 1. Convert ALL weird whitespace (newlines \n, tabs \t, \r) into normal spaces
+#             clean_title = re.sub(r'\s+', ' ', clean_title)
+            
+#             # 2. Remove all punctuation (keep only alphanumeric and spaces)
+#             clean_title = re.sub(r'[^\w\s]', '', clean_title) 
+            
+#             # 3. Trim edges and replace spaces with underscores
+#             clean_title = clean_title.strip().replace(" ", "_")
+            
+#             # 4. Remove double underscores
+#             clean_title = re.sub(r'_+', '_', clean_title) 
+            
+#             # 5. THE KILL SWITCH: Force maximum length to 40 chars to prevent WinError 123
+#             clean_title = clean_title[:40].strip('_')
+            
+#             # Fallback if the AI gives us completely unusable garbage
+#             if not clean_title:
+#                 clean_title = "semantic_cluster"
+            
+#             # Prevent collisions
+#             final_folder_name = clean_title
+#             counter = 1
+#             while os.path.exists(os.path.join(output_dir, final_folder_name)):
+#                 final_folder_name = f"{clean_title}_{counter}"
+#                 counter += 1
+                        
+#             dest_path = os.path.join(output_dir, final_folder_name)
+#             os.makedirs(dest_path, exist_ok=True)
+
+#             # Move files and create Marker
+#             for f in cluster_files:
+#                 shutil.move(os.path.join(input_dir, f), os.path.join(dest_path, f))
+            
+#             with open(os.path.join(dest_path, marker_name), 'w') as m:
+#                 m.write(representative_fname)
+            
+#             results.append({"label": final_folder_name, "count": len(cluster_files), "description": raw_desc})
+
+#         return jsonify({"status": "success", "clusters": results})
+
+#     except Exception as e:
+#         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
+# @app.route("/api/organize", methods=["POST"])
+# def organize_files():
+#     try:
+#         debug("===== ORGANIZATION STARTED =====")
+
+#         files = collect_files_for_ai()
+
+#         if not files:
+#             debug("No readable files found.")
+#             return jsonify({
+#                 "reply": "I could not find readable text/code files to organize."
+#             })
+
+#         raw_plan = ask_ollama_for_organization(files)
+#         raw_plan = repair_missing_llm_moves(raw_plan, files)
+
+#         plan = normalize_plan(raw_plan)
+#         result = apply_organization_plan(plan)
+
+#         moved_count = len(result["moved_files"])
+#         dir_count = len(result["created_dirs"])
+#         skipped_count = len(result["skipped_files"])
+#         removed_empty_count = len(result.get("removed_empty_dirs", []))
+
+#         summary = plan.get("summary", "Organization completed.")
+
+#         reply = (
+#             f"{summary}\n\n"
+#             f"Created non-empty folders: {dir_count}\n"
+#             f"Moved files: {moved_count}\n"
+#             f"Skipped files: {skipped_count}\n"
+#             f"Removed empty folders: {removed_empty_count}"
+#         )
+
+#         if moved_count > 0:
+#             reply += "\n\nMain moves:\n"
+
+#             for move in result["moved_files"][:12]:
+#                 reply += f"- {move['from']} → {move['to']}\n"
+
+#         if result.get("removed_empty_dirs"):
+#             reply += "\nRemoved empty folders:\n"
+
+#             for folder in result["removed_empty_dirs"][:12]:
+#                 reply += f"- {folder}\n"
+
+#         if skipped_count > 0:
+#             reply += "\nSkipped files:\n"
+
+#             for skipped in result["skipped_files"][:12]:
+#                 reply += f"- {skipped['path']}: {skipped['reason']}\n"
+
+#         debug("===== ORGANIZATION FINISHED =====")
+
+#         return jsonify({
+#             "reply": reply,
+#             "raw_plan": raw_plan,
+#             "plan": plan,
+#             "result": result
+#         })
+
+#     except requests.exceptions.ConnectionError:
+#         debug("ERROR: Could not connect to Ollama.")
+#         return jsonify({
+#             "error": "Could not connect to Ollama. Make sure Ollama is running with: ollama serve"
+#         }), 500
+
+#     except requests.exceptions.Timeout:
+#         debug("ERROR: Ollama timeout.")
+#         return jsonify({
+#             "error": "Ollama took too long to respond. Try with fewer files or a smaller directory."
+#         }), 500
+
+#     except Exception as e:
+#         debug("ERROR:", str(e))
+#         return jsonify({
+#             "error": f"Organization failed: {str(e)}"
+#         }), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
