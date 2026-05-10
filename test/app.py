@@ -513,7 +513,108 @@ def api_organize_photos():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route('/api/organize_with_ex_folder', methods=['POST'])
+def api_organize_with_ex_folder():
+    """Organizes files into already existing folders using AI classification."""
+    try:
+        # 1. Identify existing folders, excluding system and app directories
+        excluded = {'venv', 'local_db', '__pycache__', '.git', 'input', 'output', 'templates', 'static'}
+        categories = [d for d in os.listdir('.') if os.path.isdir(d) and d not in excluded]
 
+        if not categories:
+            return jsonify({"error": "No category folders found. Please create some folders manually first."}), 400
+
+        # 2. Identify all supported files in the root folder
+        supported_extensions = ('.jpg', '.jpeg', '.png', '.txt', '.md', '.pdf')
+        files = [f for f in os.listdir('.') if f.lower().endswith(supported_extensions) and os.path.isfile(f)]
+
+        if not files:
+            return jsonify({"error": "No supported files found in the root directory to organize."}), 400
+
+        print(f"📂 Found {len(files)} files. Attempting to match them to: {categories}")
+        processed_count = 0
+
+        for filename in files:
+            ext = filename.lower().split('.')[-1]
+            selected_cat = "Uncategorized"
+            file_type = ""
+
+            try:
+                # --- STEP A: AI CLASSIFICATION ---
+                if ext in ['jpg', 'jpeg', 'png']:
+                    file_type = "image"
+                    with open(filename, 'rb') as f:
+                        response = ollama.generate(
+                            model='moondream', 
+                            prompt=f"Categorize this image into one of these exact categories: {categories}. Output ONLY the category name.",
+                            images=[f.read()],
+                            keep_alive="0m" # Free memory immediately
+                        )
+                    ai_thought = response['response'].strip()
+                
+                elif ext == 'pdf':
+                    file_type = "pdf"
+                    doc = fitz.open(filename)
+                    text = "".join([page.get_text() for page in doc[:2]]) # Read first 2 pages
+                    doc.close()
+                    response = ollama.generate(
+                        model='phi3',
+                        prompt=f"Text: '{text[:1500]}'. Which category fits best: {categories}? Output ONLY the category name.",
+                        options={"num_ctx": 1024},
+                        keep_alive="0m"
+                    )
+                    ai_thought = response['response'].strip()
+                    
+                else: # txt, md
+                    file_type = "text"
+                    with open(filename, 'r', encoding='utf-8') as f:
+                        content = f.read(1500)
+                    response = ollama.generate(
+                        model='phi3',
+                        prompt=f"Text: '{content}'. Which category fits best: {categories}? Output ONLY the category name.",
+                        options={"num_ctx": 1024},
+                        keep_alive="0m"
+                    )
+                    ai_thought = response['response'].strip()
+
+                # Robust matching: check if any valid category name appears in the AI's answer
+                selected_cat = next((c for c in categories if c.lower() in ai_thought.lower()), "Uncategorized")
+                print(f"🤖 Match: {filename} -> {selected_cat} (AI said: {ai_thought})")
+
+                # --- STEP B: ORGANIZE ---
+                if not os.path.exists(selected_cat): 
+                    os.makedirs(selected_cat)
+                
+                dest_path = os.path.join(selected_cat, filename)
+                shutil.move(filename, dest_path) # Changed to 'move' to keep it clean
+                processed_count += 1
+
+                # --- STEP C: EMBED & INDEX TO CHROMADB ---
+                if file_type == "image":
+                    embedding = embedder.encode(Image.open(dest_path)).tolist()
+                elif file_type == "pdf":
+                    doc = fitz.open(dest_path)
+                    text_content = "".join([page.get_text() for page in doc[:2]])
+                    doc.close()
+                    embedding = embedder.encode(text_content[:2000]).tolist()
+                else:
+                    with open(dest_path, 'r', encoding='utf-8') as f:
+                        embedding = embedder.encode(f.read()).tolist()
+
+                collection.add(
+                    ids=[dest_path],
+                    embeddings=[embedding],
+                    metadatas=[{"type": file_type, "path": dest_path, "category": selected_cat}]
+                )
+
+            except Exception as e:
+                print(f"⚠️ Failed to process {filename}: {e}")
+
+        return jsonify({"reply": f"Success! Evaluated {len(files)} files and sorted {processed_count} of them into your existing folders."})
+
+    except Exception as e:
+        print(f"Fatal error in ex_folder route: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':
