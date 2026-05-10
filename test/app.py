@@ -10,14 +10,14 @@ from sentence_transformers import SentenceTransformer
 from pathlib import Path
 
 # 1. ENVIRONMENT SETUP
-os.environ['HF_HUB_OFFLINE'] = '1'
-os.environ['TRANSFORMERS_OFFLINE'] = '1'
+# os.environ['HF_HUB_OFFLINE'] = '1'
+# os.environ['TRANSFORMERS_OFFLINE'] = '1'
 
 app = Flask(__name__)
 
 # 2. AI & DATABASE INITIALIZATION
 print("🚀 Initializing AI Engines...")
-embedder = SentenceTransformer('clip-ViT-B-32', local_files_only=True)
+embedder = SentenceTransformer('sentence-transformers/clip-ViT-B-32')
 db_client = chromadb.PersistentClient(path="./local_db")
 collection = db_client.get_or_create_collection(name="unified_storage")
 
@@ -132,12 +132,12 @@ def api_organize():
                     doc = fitz.open(f)
                     text = "".join([page.get_text() for page in doc[:3]]) # First 3 pages
                     doc.close()
-                    res = ollama.generate(model='phi3', prompt=f"Summarize this document topic in 10 words: {text[:5000]}")
+                    res = ollama.generate(model='gemma4:e2b', prompt=f"Summarize this document topic in 10 words: {text[:5000]}")
                     summary = res['response'].strip()
                 else: # txt/md
                     with open(f, 'r', encoding='utf-8') as tf:
                         text = tf.read(2000)
-                    res = ollama.generate(model='phi3', prompt=f"Summarize this text topic in 10 words: {text}")
+                    res = ollama.generate(model='gemma4:e2b', prompt=f"Summarize this text topic in 10 words: {text}")
                     summary = res['response'].strip()
 
                 # --- 2. EMBEDDING ---
@@ -169,14 +169,14 @@ def api_organize():
             else:
                 # Name the folder based on the first item's summary
                 name_res = ollama.generate(
-                    model='phi3', 
+                    model='gemma4:e2b', 
                     prompt=f"Based on these summaries: {[i['summary'] for i in items[:3]]}, give me a 1-word folder name."
                 )
                 folder_name = name_res['response'].strip().replace('.', '').replace(' ', '_')
 
             os.makedirs(folder_name, exist_ok=True)
             for item in items:
-                shutil.copy2(item['name'], os.path.join(folder_name, item['name']))
+                shutil.move(item['name'], os.path.join(folder_name, item['name']))
 
         return jsonify({"reply": f"Success! I've analyzed {len(files)} files and grouped them into {len(set(labels)) - (1 if -1 in labels else 0)} categories."})
 
